@@ -1,0 +1,14 @@
+# Extra dependencies for the Celeb-DF + LLM pipeline (install on top of requirements.txt)
+
+# P0 face detection (SCRFD from InsightFace). Use onnxruntime instead of onnxruntime-gpu on CPU-only machines.
+insightface>=0.7.3
+onnxruntime-gpu>=1.17
+
+# P1 MLLM annotation with Qwen2.5-VL (transformers backend)
+transformers>=4.49
+accelerate>=0.33
+pillow
+bitsandbytes>=0.43   # optional, only for --load-4bit
+
+# Optional: faster serving for annotation / planner (Linux only)
+# vllm>=0.6

@@ -2,6 +2,7 @@
 
 > Phạm vi: **train, làm dày dữ liệu và test đều trên Celeb-DF (v2)**.
 > Hệ hiện tại: `RedesignedFAViT` (ViT-B/16 đóng băng + GAM/LAM adapter + CNN local, tùy chọn nhánh FFT, FALoss) + dữ liệu GAN bổ sung (`train_with_gan.py`).
+> Hướng dẫn chạy từng bước (lệnh, đầu vào/đầu ra, go/no-go): [`RUN_GUIDE_CELEBDF.md`](RUN_GUIDE_CELEBDF.md).
 > Nguồn ý tưởng: sheet *Deepfake Detection using LLM* — tab "Hướng nghiên cứu" (hướng 2, 3, 4, 9) và tab "Đề xuất" (đề xuất 1, 2, 3/CompFFD).
 
 ---

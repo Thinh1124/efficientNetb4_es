@@ -1,0 +1,48 @@
+# Celeb-DF v2 training driven by the manifest from scripts/prepare_celebdf.py.
+# Baselines: B0 = this file as is; B2/D1/D2/D3 = add entries under `synth`.
+
+manifest: "data/celebdf/meta.csv"        # output of `prepare_celebdf.py merge`
+frames_root: "data/celebdf/frames"       # folder that rel_path in the manifest is relative to
+protocol: "official"                     # official | sid
+train_real_percent: 100                  # P-low: keep this % of real *videos* in train
+train_fake_percent: 100                  # P-low: keep this % of fake *videos* in train
+
+# Synthetic data (P2). Each entry is a synth_meta.csv from synth/generate.py.
+# rounds: optional list to only use some planner rounds.
+synth: []
+# synth:
+#   - manifest: "data/celebdf/synth/D2/synth_meta.csv"
+
+image_size: 224
+batch_size: 32
+num_workers: 8
+epochs: 30
+lr: 1e-4
+weight_decay: 1e-4
+dropout: 0.4
+pretrained: true
+backbone: "redesigned_favit"
+favit_checkpoint: null
+swin_checkpoint: null
+freq_in_channels: 3
+freq_dim: 128
+use_freq: true
+original_upsample_factor: null
+save_dir: "checkpoints/celebdf_B0_seed0"
+checkpoint_name: "best.pth"
+resume_from: null
+seed: 0
+threshold: 0.5
+device: "cuda"
+
+early_stopping_patience: 5
+lr_scheduler_patience: 2
+lr_scheduler_factor: 0.5
+min_lr: 1e-7
+
+use_pos_weight: true
+pos_weight: null        # null = auto num_real/num_fake (Celeb-DF is ~1 real : 3 fake frames after sampling)
+label_smoothing: 0.05
+lambda_fal: 0.0
+fal_margin: 0.25
+fal_scale: 32

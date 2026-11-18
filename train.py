@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
-from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
+from datasets import DeepfakeFrameDataset, build_manifest_datasets, get_eval_transform, get_train_transform
 from models import FALoss, build_model
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import compute_binary_metrics, format_metrics
@@ -140,11 +140,16 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     image_size = int(config["image_size"])
     train_transform = get_train_transform(image_size)
     eval_transform = get_eval_transform(image_size)
+    dataset_type = str(config.get("dataset_type", "ffpp"))
+
+    if config.get("manifest"):
+        train_dataset, val_dataset = build_manifest_datasets(config, train_transform, eval_transform)
+        return _make_loaders(config, train_dataset, val_dataset)
 
     train_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["train_dir"],
-        dataset_type="ffpp",
+        dataset_type=dataset_type,
         train_transform=train_transform,
         eval_transform=eval_transform,
         original_upsample_factor=config.get("original_upsample_factor"),
@@ -155,13 +160,16 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     val_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["val_dir"],
-        dataset_type="ffpp",
+        dataset_type=dataset_type,
         train_transform=None,
         eval_transform=eval_transform,
         original_upsample_factor=0,
         mode="val",
     )
+    return _make_loaders(config, train_dataset, val_dataset)
 
+
+def _make_loaders(config: Dict, train_dataset, val_dataset) -> Tuple[DataLoader, DataLoader]:
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
