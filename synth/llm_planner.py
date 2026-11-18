@@ -1,8 +1,9 @@
 """P2.3 — Decide what to synthesise next round from the error report.
 
 Modes (same budget, so D1/D2/D3 are comparable):
-  llm     D2: an instruction LLM reads report.md and returns a JSON plan (OpenAI-compatible endpoint,
-          e.g. `vllm serve Qwen/Qwen2.5-7B-Instruct`, or any hosted API via --api-base + OPENAI_API_KEY).
+  llm     D2: an instruction LLM reads report.md and returns a JSON plan. --backend openai: any
+          OpenAI-compatible endpoint (vLLM, hosted API via --api-base + OPENAI_API_KEY);
+          --backend transformers: load e.g. Qwen/Qwen2.5-7B-Instruct in-process (works on Colab).
   rule    D3: budget split in proportion to (1 - AUC) of the worst cells + FPR of real ops.
   random  D1: budget spread evenly over all cells.
 
@@ -19,8 +20,11 @@ import json
 import os
 import re
 import time
+import sys
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from synth.error_report import to_markdown
 from synth.recipes import REAL_OPS, REGIONS, FAKE_ARTIFACTS, all_cells, save_plan, validate_plan
@@ -54,6 +58,36 @@ def call_llm(api_base: str, model: str, prompt: str, temperature: float) -> str:
         return json.loads(resp.read())["choices"][0]["message"]["content"]
 
 
+_LOCAL = {}
+
+
+def call_local(model_name: str, prompt: str, temperature: float, load_4bit: bool) -> str:
+    """Run the planner LLM in-process with transformers (no server needed, e.g. on Colab)."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    from scripts.annotate_mllm import resolve_dtype
+
+    if model_name not in _LOCAL:
+        kwargs = {"torch_dtype": resolve_dtype("auto"), "device_map": "auto"}
+        if load_4bit:
+            from transformers import BitsAndBytesConfig
+            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True,
+                                                               bnb_4bit_compute_dtype=kwargs["torch_dtype"])
+        _LOCAL[model_name] = (AutoTokenizer.from_pretrained(model_name),
+                              AutoModelForCausalLM.from_pretrained(model_name, **kwargs).eval())
+    tok, model = _LOCAL[model_name]
+    text = tok.apply_chat_template([{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
+                                   tokenize=False, add_generation_prompt=True)
+    inputs = tok(text, return_tensors="pt").to(model.device)
+    gen = {"max_new_tokens": 1500, "do_sample": temperature > 0}
+    if temperature > 0:
+        gen["temperature"] = temperature
+    with torch.no_grad():
+        out = model.generate(**inputs, **gen)
+    return tok.decode(out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+
+
 def rule_plan(report: dict, budget: int, top_k: int) -> dict:
     cells = sorted(report["cells"], key=lambda c: c["auc"])[:top_k]
     weights = [(c, max(1e-3, 1 - c["auc"])) for c in cells]
@@ -85,6 +119,9 @@ def main() -> None:
     p.add_argument("--round", type=int, required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--log", default="runs/planner_log.jsonl")
+    p.add_argument("--backend", choices=["openai", "transformers"], default="openai",
+                   help="openai: HTTP endpoint (vLLM / hosted API); transformers: load the model in-process")
+    p.add_argument("--load-4bit", action="store_true", help="transformers backend only")
     p.add_argument("--api-base", default="http://localhost:8000/v1")
     p.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     p.add_argument("--temperature", type=float, default=0.2)
@@ -103,7 +140,8 @@ def main() -> None:
                              real_ops=", ".join(REAL_OPS))
         raw = {}
         for attempt in range(args.retries + 1):
-            answer = call_llm(args.api_base, args.model, prompt, args.temperature)
+            answer = (call_local(args.model, prompt, args.temperature, args.load_4bit) if args.backend == "transformers"
+                      else call_llm(args.api_base, args.model, prompt, args.temperature))
             match = re.search(r"\{.*\}", answer, flags=re.S)
             try:
                 raw = json.loads(match.group(0)) if match else {}

@@ -105,19 +105,34 @@ def parse_findings(text: str) -> Optional[List[Dict]]:
 
 
 # ------------------------------------------------------------------------ backends
+def resolve_dtype(name: str):
+    """bf16 on Ampere+ (A100, L4), fp16 on older GPUs such as the Colab T4."""
+    import torch
+
+    if name == "bf16":
+        return torch.bfloat16
+    if name == "fp16":
+        return torch.float16
+    if name == "fp32" or not torch.cuda.is_available():
+        return torch.float32
+    return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
+
 class TransformersBackend:
-    def __init__(self, model_name: str, load_4bit: bool, max_pixels: int) -> None:
+    def __init__(self, model_name: str, load_4bit: bool, max_pixels: int, dtype: str = "auto") -> None:
         import torch
         from transformers import AutoProcessor
+
+        dtype = resolve_dtype(dtype)
 
         try:
             from transformers import Qwen2_5_VLForConditionalGeneration as ModelCls
         except ImportError as exc:
             raise SystemExit("transformers>=4.49 is required for Qwen2.5-VL") from exc
-        kwargs = {"torch_dtype": torch.bfloat16, "device_map": "auto"}
+        kwargs = {"torch_dtype": dtype, "device_map": "auto"}
         if load_4bit:
             from transformers import BitsAndBytesConfig
-            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
+            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=dtype)
         self.model = ModelCls.from_pretrained(model_name, **kwargs).eval()
         self.processor = AutoProcessor.from_pretrained(model_name, min_pixels=128 * 28 * 28, max_pixels=max_pixels)
         self.processor.tokenizer.padding_side = "left"
@@ -198,6 +213,8 @@ def main() -> None:
     p.add_argument("--model", default="Qwen/Qwen2.5-VL-7B-Instruct")
     p.add_argument("--api-base", default="http://localhost:8000/v1")
     p.add_argument("--load-4bit", action="store_true")
+    p.add_argument("--dtype", choices=["auto", "bf16", "fp16", "fp32"], default="auto",
+                   help="auto = bf16 if the GPU supports it, else fp16 (Colab T4)")
     p.add_argument("--max-pixels", type=int, default=448 * 448)
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--max-new-tokens", type=int, default=256)
@@ -219,7 +236,7 @@ def main() -> None:
     fmt = dict(regions=", ".join(REGIONS), artifacts=", ".join(ARTIFACTS))
     backend = None
     if not args.dry_run:
-        backend = (TransformersBackend(args.model, args.load_4bit, args.max_pixels) if args.backend == "transformers"
+        backend = (TransformersBackend(args.model, args.load_4bit, args.max_pixels, args.dtype) if args.backend == "transformers"
                    else OpenAIBackend(args.api_base, args.model))
     preview_dir = out.parent / "dry_run_preview"
 

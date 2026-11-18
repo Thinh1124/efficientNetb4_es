@@ -6,6 +6,8 @@ Toàn bộ pipeline đã được chạy thử end-to-end trên một bộ Celeb
 
 Số thời gian bên dưới là ước lượng thô cho 1 GPU 24 GB, không phải số đo.
 
+> **Chạy trên Google Colab:** dùng [`notebooks/colab_celebdf_llm.ipynb`](notebooks/colab_celebdf_llm.ipynb). Notebook có chế độ `QUICK` (một phần nhỏ dữ liệu để kiểm tra pipeline) và ghi checkpoint, manifest, kết quả lên Google Drive để chạy tiếp được sau khi Colab ngắt phiên. Trên GPU T4: annotate MLLM và planner LLM dùng `--load-4bit`, và script tự chọn fp16 (T4 không hỗ trợ bf16). Vì CPU Colab chỉ có 2 nhân, đặt `--workers 2` / `num_workers: 2`.
+
 ---
 
 ## 0. Cài đặt
@@ -312,6 +314,6 @@ Mỗi vòng `r` (bắt đầu `r = 1`; vòng 0 là D1 ngẫu nhiên với ngân 
 | P1.3 | `scripts/qc_annotations.py` | không | `calib.json`, `train_qc.jsonl` |
 | P2.1–2 | `synth/generate.py` | không | `synth/*/synth_meta.csv` |
 | P2.3 | `synth/error_report.py` | không | `report.json/.md` |
-| P2.3 | `synth/llm_planner.py` | có nếu tự chạy LLM | `plans/*.json`, log |
+| P2.3 | `synth/llm_planner.py` (`--backend openai` hoặc `transformers`) | có nếu tự chạy LLM | `plans/*.json`, log |
 
 Chưa có trong đợt này (làm ở vòng sau): `models/favit_align.py` và `train_celebdf_llm.py` cho P3 (alignment patch × artifact), cùng phần distillation P4.
